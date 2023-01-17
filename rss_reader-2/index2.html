@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests" />
+
+    <title>Just the News</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.1/jquery.min.js"></script>
+    <script src="jquery-dateformat.min.js"></script>
+
+
+    <link rel="stylesheet" href="css/normalize.css">
+    <link rel="stylesheet" href="css/main.css">
+    <div class="bottom_right">
+      <h2><a href="https://justthene.ws/about.html">?</a></h2>
+    </div>
+
+
+<!--
+    <style>
+
+
+      h2 {
+        font-family: Times New Roman", serif;
+        font-weight: 200;
+        font-size: 2.5em;
+      }
+
+      a {
+        text-decoration: none;
+        color: black;
+      }
+    </style>
+  -->
+
+
+  </head>
+
+  <body>
+
+  <!--
+    <h1>RSS READER</h1>
+    <h4 id="refreshCounter">REFRESH COUNTER: 0</h4>
+  -->
+
+
+
+  <div id="rss_div">
+       <article style="height: 30px">
+        <h2>
+          Loading...
+        </h2>
+      </article>
+    </div>
+
+
+
+  </body>
+
+
+
+
+  <script>
+    let rssArray = [
+      `https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml`,
+      `http://rss.cnn.com/rss/cnn_topstories.rss`,
+      `https://moxie.foxnews.com/google-publisher/latest.xml`,
+      `https://www.theguardian.com/uk/rss`,
+      `https://www.dailymail.co.uk/articles.rss`,
+      `http://www.xinhuanet.com/english/rss/worldrss.xml`,
+      `https://timesofindia.indiatimes.com/rssfeedstopstories.cms`,
+      `https://www.dailymail.co.uk/articles.rss`,
+    ];
+    let refreshCounter = 0;
+    let oldRssTitles = [];
+    let totalRssLinks = rssArray.length;
+    let secondsToRefresh = 5000; // 1000  = 1 seconds
+    let rssCallbackCounter = 0;
+    let allFeeds = [];
+    xhrPool = []; // no need to use **var**
+
+    $(document).ready(function () {
+      console.log("ready!");
+
+      fetchRSS();
+    });
+
+    function updateRefreshCounter() {
+      $("#refreshCounter").text("REFRESH COUNTER: " + refreshCounter);
+    }
+
+    function fetchRSS() {
+      rssCallbackCounter = 0;
+      rssArray.forEach((singleRssLink) => {
+        $.ajax({
+          url: "rss_reader.php",
+          type: "GET",
+          dataType: "json",
+          data: { url: singleRssLink },
+          beforeSend: function (jqXHR, settings) {
+            xhrPool.push(jqXHR);
+          },
+        })
+          .done(function (rssData) {
+            rssCallbackCounter = rssCallbackCounter + 1;
+            // console.log(rssData.length + " " + rssCallbackCounter);
+            if (rssCallbackCounter != totalRssLinks) {
+              if (rssCallbackCounter == 1) allFeeds = [];
+              rssData.rss_feed.forEach((singleItem) => {
+                allFeeds.push(singleItem);
+              });
+            } else {
+              if (refreshCounter > 0) {
+                let i = 0;
+                allFeeds.forEach((singleFeedArr) => {
+                  showFeed(singleFeedArr);
+                });
+              } else {
+                firstTimeLoadFeed();
+                if (refreshCounter == 0) {
+                  console.log("setting timer, REFRESH COUNTER: " + refreshCounter + " rssCallbackCounter: " + rssCallbackCounter);
+
+                  const interval = setInterval(function () {
+                    fetchRSS();
+                    refreshCounter++;
+                    updateRefreshCounter();
+                  }, secondsToRefresh);
+                }
+              }
+            }
+          })
+          .fail(function (xhr, status, error) {
+            $.each(xhrPool, function (idx, jqXHR) {
+              jqXHR.abort();
+            });
+            if ((refreshCounter = 0)) fetchRSS();
+          });
+      });
+    }
+    let delayTimeMultiplier = 0;
+    function showFeed(singleRss) {
+      let html = ``;
+      let dummyhtml = ``;
+      let title = "";
+      title = singleRss.title;
+      title = title.replace("<![CDATA[", "").replace("]]>", "");
+
+      if (stringExistInArray(oldRssTitles, cleanString(title))) {
+        return;
+      } else {
+        oldRssTitles.push(cleanString(title));
+      }
+      if (refreshCounter > 0) {
+        console.log("new news found");
+      }
+
+      delayTimeMultiplier = delayTimeMultiplier + 1;
+      setTimeout(function () {
+        let link = "";
+        if (singleRss.guid) link = singleRss.guid;
+        else link = singleRss.link;
+
+        let date = singleRss.pubDate;
+        let formatedDate = $.format.date(new Date(date), "MMMM dd, hh:mm");
+        html += `
+        				<article id="${cleanString(title)}" >
+        				<h2>
+        					<a href="${link}" target="_blank" rel="noopener">
+        					${title + `, ` + formatedDate}
+        					</a>
+        				</h2>
+        				</article>
+        			`;
+
+        dummyhtml += `
+        				<article id="${cleanString(title)}">
+        				<h2>
+        					<a href="" target="_blank" rel="noopener">
+
+        					</a>
+        				</h2>
+        				</article>
+        			`;
+
+        if (delayTimeMultiplier < 1) delayTimeMultiplier = 1;
+        $(dummyhtml)
+          .prependTo("#rss_div")
+          .hide()
+          .slideDown({
+            duration: 150,
+            complete: function () {
+              $("#" + cleanString(title)).replaceWith(html);
+              delayTimeMultiplier = delayTimeMultiplier - 1;
+            },
+          });
+      }, delayTimeMultiplier * 2000);
+    }
+
+    function firstTimeLoadFeed() {
+      let html = ``;
+      allFeeds.forEach((singleRss) => {
+        let title = "";
+        title = singleRss.title;
+        title = title.replace("<![CDATA[", "").replace("]]>", "");
+
+        oldRssTitles.push(cleanString(title));
+
+        let link = "";
+        if (singleRss.guid) link = singleRss.guid;
+        else link = singleRss.link;
+
+        let date = singleRss.pubDate;
+        let formatedDate = $.format.date(new Date(date), "MMMM dd, hh:mm");
+        html += `
+        				<article id="${cleanString(title)}">
+        				<h2>
+        					<a href="${link}" target="_blank" rel="noopener">
+        					${title + `, ` + formatedDate}
+        					</a>
+        				</h2>
+        				</article>
+        			`;
+      });
+      $(html).prependTo("#rss_div");
+    }
+
+    function stringExistInArray(stringArray, stringToSearch) {
+      return stringArray.indexOf(stringToSearch) > -1;
+    }
+
+    function cleanString(title) {
+      return title.replace(/[^A-Z0-9]/gi, "");
+    }
+  </script>
+</html>
